@@ -58,6 +58,56 @@ To update:
 3.  If the Codex CLI also updated, run `npm update -g @openai/codex`.
 4.  Run `node rebuild_codex.js --clean` to ensure a fresh build with the new files.
 
+## Automated Releases (GitHub Actions) 🤖
+
+This repository includes an **automated build system** that creates new Intel releases automatically when OpenAI releases a new version.
+
+### How It Works
+
+A GitHub Actions workflow runs daily to:
+- Check for new official Codex.dmg releases
+- Download and verify the new DMG
+- Build an Intel (x64) version using the existing process
+- Create a tagged GitHub release with the built app
+
+### Using Automated Releases
+
+Instead of building manually, you can now **watch for releases** and download directly:
+
+**For End Users:**
+
+1. Go to the [Releases page](https://github.com/soham2008xyz/codex-rebuilder/releases)
+2. Download the **Codex.app.zip** from the latest release (tagged `vX.Y.Z-intel`)
+3. Extract and move `Codex.app` to `/Applications/`
+4. Remove quarantine attributes if needed:
+   ```bash
+   xattr -cr /Applications/Codex.app
+   ```
+5. Launch Codex from Applications
+
+**Benefits:**
+- ✅ No need to build locally
+- ✅ Get updates within hours of official release
+- ✅ Consistent, reproducible builds
+- ✅ Direct download from GitHub (fast and reliable)
+
+**Manual Builds Still Supported:**
+
+You can still build manually if you prefer:
+- Fork the repo and customize the build
+- Use `bash build.sh` locally
+- Follow manual update instructions below
+
+## Updates
+
+**Note:** This is a manual port. Auto-updates will **not** work.
+
+To update:
+1. Download the new `Codex.dmg` from OpenAI.
+2. Replace the old `Codex.dmg` in this folder.
+3. If the Codex CLI also updated, run `npm update -g @openai/codex`.
+4. Run `node rebuild_codex.js --clean` to ensure a fresh build with the new files.
+
 ## Security Note
 
 The built app launches with the `--no-sandbox` Electron flag via a wrapper script at `Contents/MacOS/Codex`. This disables Chromium's internal process sandbox, which is necessary to allow tools like **Playwright** to spawn browser subprocesses from within the integrated terminal.

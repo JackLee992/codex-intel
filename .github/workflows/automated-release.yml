@@ -1,0 +1,218 @@
+name: Automated Intel Release
+
+# Controls when the workflow will run
+on:
+  schedule:
+    # Run daily at midnight UTC
+    - cron: '0 0 * * *'
+  # Allow manual trigger
+  workflow_dispatch:
+
+# Permissions needed for creating releases
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  check-and-build:
+    # Don't run on forks - only main repository
+    if: github.repository == 'soham2008xyz/codex-rebuilder'
+    runs-on: macos-15-intel
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need full history for tag checking
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Cache Codex CLI
+        id: cache-codex-cli
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-cache-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}
+
+      - name: Install Codex CLI
+        run: |
+          echo "Installing/Updating @openai/codex CLI..."
+          npm install -g @openai/codex
+
+      - name: Get Last Deployed DMG Hash
+        id: get-last-hash
+        run: |
+          # Use helper script to get last hash
+          LAST_DMG_HASH=$(./scripts/get-last-dmg-hash.sh)
+          echo "Found last DMG hash: $LAST_DMG_HASH"
+          echo "last_dmg_hash=$LAST_DMG_HASH" >> $GITHUB_OUTPUT
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cache Codex.dmg
+        id: cache-dmg
+        uses: actions/cache@v4
+        with:
+          path: ~/Codex.dmg
+          key: dmg-cache-${{ hashFiles('~/Codex.dmg') }}
+
+      - name: Download Latest Codex.dmg
+        id: download
+        run: |
+          echo "Downloading latest Codex.dmg..."
+          curl -L -o ~/Codex.dmg "https://persistent.oaistatic.com/codex-app-prod/Codex.dmg"
+
+          # Calculate SHA256 hash
+          DMG_HASH=$(shasum -a 256 ~/Codex.dmg | cut -d' ' -f1)
+          echo "Downloaded DMG SHA256: $DMG_HASH"
+          echo "dmg_hash=$DMG_HASH" >> $GITHUB_OUTPUT
+
+      - name: Check If New Version
+        id: check-version
+        run: |
+          LAST_HASH="${{ steps.get-last-hash.outputs.last_dmg_hash }}"
+          CURRENT_HASH="${{ steps.download.outputs.dmg_hash }}"
+
+          echo "Last deployed hash: $LAST_HASH"
+          echo "Current hash: $CURRENT_HASH"
+
+          if [[ "$LAST_HASH" == "none" ]] || [[ "$LAST_HASH" != "$CURRENT_HASH" ]]; then
+            echo "New version detected or first run. Proceeding with build."
+            echo "is_new=true" >> $GITHUB_OUTPUT
+          else
+            echo "No changes detected. Skipping build."
+            echo "is_new=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Setup Build Environment
+        if: steps.check-version.outputs.is_new == 'true'
+        run: |
+          echo "Setting up build environment..."
+          # Copy cached/downloaded DMG to build directory
+          cp ~/Codex.dmg ./Codex.dmg
+
+      - name: Build Intel Release
+        id: build
+        if: steps.check-version.outputs.is_new == 'true'
+        run: |
+          echo "Starting Intel build..."
+          make build
+
+          if [[ ! -d "Codex.app" ]]; then
+            echo "Build failed - Codex.app not found"
+            exit 1
+          fi
+
+      - name: Extract Version Information
+        id: extract-version
+        if: steps.check-version.outputs.is_new == 'true'
+        run: |
+          # Mount the DMG to extract version info
+          hdiutil attach -noverify -nobrowse -mountpoint /Volumes/CodexTemp ./Codex.dmg
+
+          # Extract version from Info.plist
+          CODEX_VERSION=$(defaults read /Volumes/CodexTemp/Codex.app/Contents/Info.plist CFBundleShortVersionString 2>/dev/null || echo "unknown")
+          ELECTRON_VERSION=$(defaults read /Volume/CodexTemp/Codex.app/Contents/Info.plist CFBundleExecutable 2>/dev/null || echo "unknown")
+
+          hdiutil detach /Volumes/CodexTemp
+
+          # Clean version string
+          CODEX_VERSION=${CODEX_VERSION// /-}
+          CODEX_VERSION="${CODEX_VERSION//[^a-zA-Z0-9.-]/}"
+
+          if [[ "$CODEX_VERSION" == "unknown" ]] || [[ -z "$CODEX_VERSION" ]]; then
+            # Fallback to date-based version
+            CODEX_VERSION=$(date +"%Y.%m.%d")
+          fi
+
+          echo "Codex version: $CODEX_VERSION"
+          echo "version=$CODEX_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        id: create-release
+        if: steps.check-version.outputs.is_new == 'true'
+        run: |
+          VERSION="${{ steps.extract-version.outputs.version }}"
+          DMG_HASH="${{ steps.download.outputs.dmg_hash }}"
+
+          # Clean version for tag
+          TAG_VERSION="v${VERSION}-intel"
+          echo "Creating release: $TAG_VERSION"
+
+          # Create release notes
+          RELEASE_BODY="""
+          ## Codex Intel Build v${VERSION}
+
+          This is an Intel (x64) build of the official Codex Desktop App.
+
+          ### Build Information
+          - **Source**: OpenAI Codex DMG
+          - **DMG SHA256**: ${DMG_HASH}
+          - **Architecture**: Intel x64
+          - **Build Date**: $(date -u +"%Y-%m-%d %H:%M UTC")
+
+          ### Notes
+          - Auto-generated from automated workflow
+          - Built on macOS Intel runner
+          - Includes `--no-sandbox` wrapper for tool compatibility
+
+          ### Installation
+
+          1. Download the **Codex.app.zip** asset below
+          2. Extract the zip file
+          3. Move `Codex.app` to `/Applications/`
+          4. If you see "App is damaged":
+             ```bash
+             xattr -cr /Applications/Codex.app
+             ```
+
+          ### Troubleshooting
+
+          See [README.md](https://github.com/soham2008xyz/codex-rebuilder) for troubleshooting guides.
+          """
+
+          # Create release
+          gh release create "$TAG_VERSION" \
+            --title "Intel Build - v${VERSION}" \
+            --notes "$RELEASE_BODY" \
+            --verify-tag=false
+
+      - name: Upload Release Asset
+        if: steps.check-version.outputs.is_new == 'true'
+        run: |
+          TAG_VERSION="v${{ steps.extract-version.outputs.version }}-intel"
+
+          # Zip the app
+          echo "Creating zip archive..."
+          zip -r Codex.app.zip Codex.app -x "*.DS_Store" -x "*/.git*"
+
+          # Upload to release
+          echo "Uploading release asset..."
+          gh release upload "$TAG_VERSION" Codex.app.zip#Codex.app.zip \
+            --clobber
+
+      - name: Generate Summary
+        run: |
+          if [[ "${{ steps.check-version.outputs.is_new }}" == "true" ]]; then
+            echo "## ✅ New Intel Release Created" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Release**: [${{ steps.extract-version.outputs.version }}-intel](https://github.com/soham2008xyz/codex-rebuilder/releases/tag/v${{ steps.extract-version.outputs.version }}-intel)" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**DMG Hash**: ${{ steps.download.outputs.dmg_hash }}" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## ℹ️ No new version detected" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "The current Codex DMG matches the last deployed version. No new build was created." >> $GITHUB_STEP_SUMMARY
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cleanup
+        if: steps.check-version.outputs.is_new == 'true'
+        run: |
+          rm -f ~/Codex.dmg ./Codex.dmg Codex.app.zip
+          make clean || true
