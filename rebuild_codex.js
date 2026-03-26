@@ -5,7 +5,7 @@ const os = require('os');
 
 // Configuration
 const REPO_ROOT = __dirname;
-const MOUNT_POINT = '/Volumes/CodexMount';
+const MOUNT_POINT = fs.mkdtempSync(path.join(os.tmpdir(), 'codex_mount_'));
 const DMG_PATH = path.join(REPO_ROOT, 'Codex.dmg');
 const TEMP_DIR = path.join(REPO_ROOT, 'temp_build');
 const FINAL_APP_PATH = path.join(REPO_ROOT, 'Codex_Intel.app');
@@ -136,9 +136,16 @@ async function main() {
             if (mounted) {
                 // Try to detach, don't fail if busy
                 try {
-                    run(`hdiutil detach "${MOUNT_POINT}"`);
+                    run(`hdiutil detach -force "${MOUNT_POINT}"`);
                 } catch (e) {
                     console.warn("Failed to unmount, ignoring.");
+                }
+            }
+            if (fs.existsSync(MOUNT_POINT)) {
+                try {
+                    fs.rmSync(MOUNT_POINT, { recursive: true, force: true });
+                } catch(e) {
+                    console.warn("Failed to cleanup temp mount point: ", e);
                 }
             }
         }
