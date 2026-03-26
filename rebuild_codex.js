@@ -5,7 +5,13 @@ const os = require('os');
 
 // Configuration
 const REPO_ROOT = __dirname;
-const MOUNT_POINT = fs.mkdtempSync(path.join(os.tmpdir(), 'codex_mount_'));
+const MOUNT_POINT = path.join(
+    os.tmpdir(),
+    'codex_mount_' +
+        Date.now().toString(36) +
+        '_' +
+        Math.random().toString(36).slice(2)
+);
 const DMG_PATH = path.join(REPO_ROOT, 'Codex.dmg');
 const TEMP_DIR = path.join(REPO_ROOT, 'temp_build');
 const FINAL_APP_PATH = path.join(REPO_ROOT, 'Codex_Intel.app');
