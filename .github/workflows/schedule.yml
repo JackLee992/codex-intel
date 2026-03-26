@@ -11,7 +11,7 @@ permissions:
 jobs:
   build-and-release:
     name: Check, Build, and Release
-    runs-on: macos-15-intel # Use Intel-based macOS 15 runner to match main CI
+    runs-on: macos-13 # Use Intel-based macOS runner
 
     steps:
       - name: Checkout Repository
@@ -29,34 +29,18 @@ jobs:
       - name: Extract Version
         id: extract_version
         run: |
-          # Create a unique temporary mountpoint for the DMG
-          MOUNT_POINT=$(mktemp -d /tmp/codex_mount.XXXXXX)
-          echo "Using mount point: $MOUNT_POINT"
-
-          cleanup() {
-            # If something is mounted on the mountpoint, try to detach it
-            if mount | grep "on $MOUNT_POINT " > /dev/null 2>&1; then
-              echo "Detaching DMG from $MOUNT_POINT..."
-              hdiutil detach "$MOUNT_POINT" > /dev/null 2>&1 || \
-                hdiutil detach -force "$MOUNT_POINT" > /dev/null 2>&1 || true
-            fi
-            # Remove the temporary mountpoint directory if it still exists
-            if [ -d "$MOUNT_POINT" ]; then
-              rmdir "$MOUNT_POINT" 2>/dev/null || true
-            fi
-          }
-
-          # Ensure cleanup runs on all exit paths
-          trap cleanup EXIT
-
           # Mount the DMG
-          hdiutil attach Codex.dmg -nobrowse -mountpoint "$MOUNT_POINT"
+          hdiutil attach Codex.dmg -nobrowse -mountpoint /Volumes/CodexMount
 
           # Read the version from Info.plist
-          VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$MOUNT_POINT/Codex.app/Contents/Info.plist")
+          VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "/Volumes/CodexMount/Codex.app/Contents/Info.plist")
           echo "Extracted version: $VERSION"
+
+          # Unmount the DMG
+          hdiutil detach /Volumes/CodexMount
+
           # Save the version to output
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Check for Existing Release
         id: check_release
