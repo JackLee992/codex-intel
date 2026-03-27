@@ -1,0 +1,24 @@
+name: Test Homebrew Cask
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test-cask:
+    name: Test Homebrew Cask
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@master
+
+      - name: Run Cask tests
+        run: ./scripts/test_cask.sh
