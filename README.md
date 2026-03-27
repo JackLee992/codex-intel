@@ -1,94 +1,112 @@
-# Codex Intel Rebuilder
+# Codex Intel Homebrew Tap
 
-This project allows you to port the official Arm64 (Apple Silicon) Codex Desktop App to run on Intel Macs.
+[![Daily Build Codex App (Intel)](https://github.com/soham2008xyz/codex-intel/actions/workflows/schedule.yml/badge.svg)](https://github.com/soham2008xyz/codex-intel/actions/workflows/schedule.yml)
+[![Test Homebrew Cask](https://github.com/soham2008xyz/codex-intel/actions/workflows/test.yml/badge.svg)](https://github.com/soham2008xyz/codex-intel/actions/workflows/test.yml)
 
-## Prerequisites
+This repository now ships an unofficial Homebrew cask tap for installing Codex on Intel Macs.
 
-1.  **Node.js**: Installed on your system.
-2.  **Codex CLI**: You must have the official `@openai/codex` CLI installed globally, as we need its x64 binary.
-    ```bash
-    npm install -g @openai/codex
-    ```
-3.  **Codex.dmg**: The official Arm64 installer (place it in this directory).
-    -   Download: [https://persistent.oaistatic.com/codex-app-prod/Codex.dmg](https://persistent.oaistatic.com/codex-app-prod/Codex.dmg)
+Instead of manually rebuilding the app on every release, GitHub Actions now:
 
-## How to Build
+1. Download the latest official Apple Silicon Codex DMG from OpenAI.
+2. Rebuild it for Intel/AMD64 on an Intel macOS runner.
+3. Publish the converted app as a GitHub release asset.
+4. Update [`Casks/codex-intel.rb`](Casks/codex-intel.rb) so Homebrew installs that release.
 
-Run the rebuild script:
+The core automation lives in [`schedule.yml`](.github/workflows/schedule.yml), and cask validation runs in [`test.yml`](.github/workflows/test.yml).
 
-```bash
-node scripts/rebuild_codex.js
-```
+## What This Tap Provides
 
-For a fully clean build (removes all cached and transient files first):
+- A custom cask token: `codex-intel`
+- An Intel-compatible `Codex.app` packaged as a GitHub release asset
+- A Homebrew install and upgrade path for Intel Macs
+- Automated daily checks for new upstream Codex releases
 
-```bash
-node scripts/rebuild_codex.js --clean
-```
+## Local Tap Usage
 
-This script will:
-1.  Mount `Codex.dmg` and extract the app logic (`app.asar`), icon, and configuration.
-2.  Download the compatible x64 Electron runtime.
-3.  Rebuild native modules (`better-sqlite3`, `node-pty`) for Intel architecture.
-4.  Copy the x64 `codex` binary from your local CLI installation.
-5.  Generate `Codex_Intel.app`.
-
-> **Note:** The script caches the extracted resources and downloaded Electron zip to speed up subsequent builds. Use `--clean` if you've updated `Codex.dmg` or the CLI to ensure stale files aren't reused.
-
-## How to Run
-
-Open the generated app:
+If you want to use this repository directly from a local clone as a custom Homebrew tap:
 
 ```bash
-open Codex_Intel.app
+git clone git@github.com:soham2008xyz/codex-intel.git
+cd codex-intel
+
+brew tap local/codex-intel "$PWD"
+brew install --cask local/codex-intel/codex-intel
 ```
 
-If you see "App is damaged", run:
+Notes:
+
+- `local/codex-intel` is just an example tap name. Any valid tap name works when pointing at your local checkout.
+- The cask installs `Codex.app`.
+- The cask conflicts with the official `codex` cask, so uninstall that first if needed.
+
+## Upgrade, Reinstall, and Remove
+
+Upgrade to the latest converted release:
+
 ```bash
-xattr -cr Codex_Intel.app
+brew upgrade --cask local/codex-intel/codex-intel
 ```
 
-## Updates
+Reinstall the current cask:
 
-**Note:** This is a manual port. Auto-updates will **not** work.
-
-To update:
-1.  Download the new `Codex.dmg` from OpenAI.
-2.  Replace the old `Codex.dmg` in this folder.
-3.  If the Codex CLI also updated, run `npm update -g @openai/codex`.
-4.  Run `node scripts/rebuild_codex.js --clean` to ensure a fresh build with the new files.
-
-## Security Note
-
-The built app launches with the `--no-sandbox` Electron flag via a wrapper script at `Contents/MacOS/Codex`. This disables Chromium's internal process sandbox, which is necessary to allow tools like **Playwright** to spawn browser subprocesses from within the integrated terminal.
-
-This is separate from the macOS Seatbelt sandbox that Codex uses for workspace isolation. To enable network access inside the Codex terminal, set the following in your Codex `config.toml`:
-
-```toml
-[sandbox_workspace_write]
-network_access = true
+```bash
+brew reinstall --cask local/codex-intel/codex-intel
 ```
 
-## Troubleshooting
+Remove the app:
 
-- **"Operation not permitted"**:
-  - The app is self-signed/unsigned. You must remove the quarantine attribute:
-    ```bash
-    xattr -cr Codex_Intel.app
-    ```
-  - If Playwright or other tools fail, ensure you are running the app via the wrapper `Contents/MacOS/Codex` (which the `.app` bundle does by default) which adds `--no-sandbox`.
+```bash
+brew uninstall --cask local/codex-intel/codex-intel
+```
 
-- **Build Failures (Native Modules)**:
-  - If you see errors about `source_location` or C++ compilation during `npm install`:
-    - Ensure your Xcode Command Line Tools are up to date (Xcode 15+ recommended for C++20 support).
-    - The build script attempts to force C++20 mode (`-std=c++20`), which requires a modern compiler.
-    - Try running `xcode-select --install` to update your tools.
+Remove the local tap when you no longer need it:
 
-- **"Could not find local x64 Codex binary"**:
-  - The script now searches dynamically for the `codex` binary. Ensure you have the latest version of `@openai/codex` installed globally.
-  - Run `npm list -g @openai/codex` to verify installation path.
--   **Blank Window**: Usually means the executable name doesn't match `Info.plist`. The script handles this via a wrapper at `Contents/MacOS/Codex` that launches `Codex.orig`.
--   **Missing Binary**: Ensure the Codex CLI is installed globally (`npm install -g @openai/codex`).
--   **No Network in Terminal**: Set `network_access = true` in your Codex `config.toml` (see Security Note above).
--   **Playwright / Browser Spawning**: Should work out of the box thanks to `--no-sandbox`. If issues persist, ensure network access is enabled.
--   **Crashes**: Check console logs. If `sparkle.node` (auto-updater) crashes, ignore it; the app should still function.
+```bash
+brew untap local/codex-intel
+```
+
+## Remote Tap Usage
+
+If you want to install from GitHub instead of a local checkout:
+
+```bash
+brew tap soham2008xyz/codex-intel
+brew install --cask codex-intel
+```
+
+Then update it later with:
+
+```bash
+brew upgrade --cask codex-intel
+```
+
+## How The Automation Works
+
+[`schedule.yml`](.github/workflows/schedule.yml) runs daily at 00:00 UTC and also supports manual dispatch. The workflow:
+
+- downloads the latest upstream `Codex.dmg`
+- extracts the app version from `Info.plist`
+- skips work if the matching `-intel` release already exists
+- builds the Intel app with `make build`
+- uploads `Codex-Intel.zip` to a GitHub release
+- updates the cask version and SHA256 on the default branch
+
+[`test.yml`](.github/workflows/test.yml) validates the tap on Intel macOS by:
+
+- checking out the repository
+- setting up Homebrew
+- auditing the cask
+- installing and uninstalling it via [`scripts/test_cask.sh`](scripts/test_cask.sh)
+
+## Repository Layout
+
+- [`Casks/codex-intel.rb`](Casks/codex-intel.rb): Homebrew cask definition
+- [`scripts/build.sh`](scripts/build.sh): Intel rebuild pipeline used by CI
+- [`scripts/test_cask.sh`](scripts/test_cask.sh): local and CI cask verification
+- [`Makefile`](Makefile): build entrypoint used by the scheduled workflow
+
+## Notes
+
+- This project is unofficial and is not affiliated with OpenAI.
+- The install source for the cask is this repository's GitHub release assets, not OpenAI directly.
+- If macOS flags the app after install, try `xattr -cr /Applications/Codex.app` and relaunch it.
