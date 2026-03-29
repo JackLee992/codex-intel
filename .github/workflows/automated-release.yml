@@ -180,43 +180,45 @@ jobs:
           TAG_VERSION="v${VERSION}-intel"
           echo "Creating release: $TAG_VERSION"
 
-          # Create release notes
-          RELEASE_BODY="""
-          ## Codex Intel Build v${VERSION}
-
-          This is an Intel (x64) build of the official Codex Desktop App.
-
-          ### Build Information
-          - **Source**: OpenAI Codex DMG
-          - **DMG SHA256**: ${DMG_HASH}
-          - **Architecture**: Intel x64
-          - **Build Date**: $(date -u +"%Y-%m-%d %H:%M UTC")
-
-          ### Notes
-          - Auto-generated from automated workflow
-          - Built on macOS Intel runner
-          - Includes `--no-sandbox` wrapper for tool compatibility
-
-          ### Installation
-
-          1. Download the **Codex.app.zip** asset below
-          2. Extract the zip file
-          3. Move `Codex.app` to `/Applications/`
-          4. If you see "App is damaged":
-             ```bash
-             xattr -cr /Applications/Codex.app
-             ```
-
-          ### Troubleshooting
-
-          See [README.md](https://github.com/soham2008xyz/codex-rebuilder) for troubleshooting guides.
-          """
+          # Write release notes to a temp file to avoid shell quoting issues
+          {
+            echo "## Codex Intel Build v${VERSION}"
+            echo ""
+            echo "This is an Intel (x64) build of the official Codex Desktop App."
+            echo ""
+            echo "### Build Information"
+            echo "- **Source**: OpenAI Codex DMG"
+            echo "- **DMG SHA256**: ${DMG_HASH}"
+            echo "- **Architecture**: Intel x64"
+            echo "- **Build Date**: $(date -u +"%Y-%m-%d %H:%M UTC")"
+            echo ""
+            echo "### Notes"
+            echo "- Auto-generated from automated workflow"
+            echo "- Built on macOS Intel runner"
+            echo "- Includes \`--no-sandbox\` wrapper for tool compatibility"
+            echo ""
+            echo "### Installation"
+            echo ""
+            echo "1. Download the **Codex.app.zip** asset below"
+            echo "2. Extract the zip file"
+            echo "3. Move \`Codex.app\` to \`/Applications/\`"
+            echo '4. If you see "App is damaged":'
+            echo '   ```bash'
+            echo "   xattr -cr /Applications/Codex.app"
+            echo '   ```'
+            echo ""
+            echo "### Troubleshooting"
+            echo ""
+            echo "See [README.md](https://github.com/soham2008xyz/codex-rebuilder) for troubleshooting guides."
+          } > /tmp/release-notes.md
 
           # Create release
           gh release create "$TAG_VERSION" \
             --title "Intel Build - v${VERSION}" \
-            --notes "$RELEASE_BODY" \
+            --notes-file /tmp/release-notes.md \
             --verify-tag=false
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Release Asset
         if: steps.check-version.outputs.is_new == 'true'
@@ -231,6 +233,8 @@ jobs:
           echo "Uploading release asset..."
           gh release upload "$TAG_VERSION" Codex.app.zip#Codex.app.zip \
             --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate Summary
         run: |
