@@ -21,8 +21,8 @@ if [[ ! -f "$DMG_PATH" ]]; then
 fi
 
 # Create temporary mount point
-MOUNT_POINT="/tmp/codex_extract_$$"
-mkdir -p "$MOUNT_POINT"
+MOUNT_POINT=$(mktemp -d -t codex_extract)
+trap 'hdiutil detach "$MOUNT_POINT" &>/dev/null || true; rmdir "$MOUNT_POINT" &>/dev/null || true' EXIT
 
 # Mount the DMG (noverify for speed, nobrowse to avoid Finder)
 hdiutil attach -noverify -nobrowse -mountpoint "$MOUNT_POINT" "$DMG_PATH" > /dev/null 2>&1
