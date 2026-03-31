@@ -85,6 +85,34 @@ brew untap soham2008xyz/codex-intel
 - [`scripts/test_cask.sh`](scripts/test_cask.sh): local and CI cask verification
 - [`Makefile`](Makefile): build entrypoint used by the scheduled workflow
 
+## Fixing `better-sqlite3` Error on Intel Mac
+
+If Codex launches but shows:
+
+```
+better-sqlite3 is only bundled with the Electron app
+```
+
+or:
+
+```
+The module was compiled against a different Node.js version
+```
+
+Run the fix script:
+
+```bash
+bash scripts/fix_better_sqlite3.sh
+```
+
+This script:
+1. Detects the correct Electron ABI version
+2. Downloads the matching prebuilt `better_sqlite3.node` (darwin-x64)
+3. Replaces the incompatible binary inside `app.asar`
+4. Re-signs and restarts Codex automatically
+
+No compilation required — uses prebuilt binaries from the official [WiseLibs/better-sqlite3](https://github.com/WiseLibs/better-sqlite3/releases) releases.
+
 ## Notes
 
 - This project is unofficial and is not affiliated with OpenAI.
